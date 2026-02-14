@@ -23,7 +23,7 @@
         }
 
         /* تنظیمات حالت شب */
-        [data-theme="dark"] {
+        body[data-theme="dark"] {
             --bg-color: #1a1a2e;
             --card-bg: #16213e;
             --text-color: #e0e0e0;
@@ -44,6 +44,7 @@
             min-height: 100vh; 
             box-sizing: border-box;
             transition: background 0.3s ease;
+            margin: 0;
         }
 
         /* هدر و کنترل‌ها */
@@ -104,7 +105,7 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 4px; z-index: 9999;
         }
         .timer-bar {
-            height: 100%; background: linear-gradient(90deg, #3498db, #2ecc71); width: 0%;
+            height: 100%; background: linear-gradient(90deg, #3498db, #2ecc71); width: 0%; transition: width 0.1s linear;
         }
 
         /* جدول */
@@ -206,60 +207,25 @@
                 </tr>
             </thead>
             <tbody id="dashboard-tbody">
-                <tr>
-                    <td colspan="6" class="info-card">
-                        <i class="fas fa-circle-notch fa-spin fa-2x" style="color:#3498db; margin-bottom: 15px;"></i>
-                        <br>در حال دریافت اطلاعات...
-                    </td>
-                </tr>
+                <?php include 'get_data.php'; ?>
             </tbody>
         </table>
     </div>
 
 <script>
     const dataUrl = 'get_data.php'; 
-    const updateInterval = 60000; 
-    let timeLeft = updateInterval;
+    const updateInterval = 60000; // 60 ثانیه
+    let timeLeft = 0;
     let timerInterval;
 
-    // المنت‌ها
     const tableBody = document.getElementById('dashboard-tbody');
     const updateTimeSpan = document.getElementById('update-time-span');
     const timerBar = document.getElementById('timer-bar');
     const searchInput = document.getElementById('searchInput');
 
-    // ----------------------------------------------
-    // تابع اصلی مرتب‌سازی (Overdue > Processing > Completed)
-    // ----------------------------------------------
-    function sortTableRows() {
-        // تمام ردیف‌های جدول را می‌گیریم
-        const rows = Array.from(tableBody.querySelectorAll('tr'));
+    // تنظیم زمان اولیه
+    updateTimeSpan.innerText = new Date().toLocaleTimeString('fa-IR');
 
-        // تابع امتیازدهی به هر ردیف برای تعیین اولویت
-        function getScore(row) {
-            // اولویت ۱: اگر تاخیر خورده باشد (قرمز)
-            if (row.classList.contains('overdue')) return 3;
-            // اولویت ۲: اگر در حال پردازش باشد (آبی)
-            if (row.classList.contains('processing')) return 2;
-            // اولویت ۳: تکمیل شده
-            if (row.classList.contains('completed')) return 1;
-            // سایر موارد
-            return 0; 
-        }
-
-        // مرتب‌سازی آرایه ردیف‌ها
-        rows.sort((a, b) => {
-            const scoreA = getScore(a);
-            const scoreB = getScore(b);
-            // مرتب‌سازی نزولی (از امتیاز ۳ به ۱)
-            return scoreB - scoreA;
-        });
-
-        // اضافه کردن مجدد ردیف‌های مرتب شده به جدول
-        rows.forEach(row => tableBody.appendChild(row));
-    }
-
-    // مدیریت تم (Dark Mode)
     function toggleTheme() {
         const body = document.body;
         const btnIcon = document.querySelector('.theme-toggle i');
@@ -275,19 +241,16 @@
         }
     }
 
-    // بازیابی تم ذخیره شده
     if (localStorage.getItem('theme') === 'dark') {
         toggleTheme();
     }
 
-    // تابع جستجو (Filter)
     function filterTable() {
         const filter = searchInput.value.toLowerCase();
         const rows = tableBody.getElementsByTagName('tr');
 
         for (let i = 0; i < rows.length; i++) {
             const nameColumn = rows[i].getElementsByTagName('td')[0];
-            
             if (nameColumn && !nameColumn.classList.contains('info-card')) {
                 const txtValue = nameColumn.textContent || nameColumn.innerText;
                 if (txtValue.toLowerCase().indexOf(filter) > -1) {
@@ -299,58 +262,40 @@
         }
     }
 
-    // مدیریت نوار تایمر
     function startTimer() {
         timeLeft = 0;
         clearInterval(timerInterval);
         timerInterval = setInterval(() => {
-            timeLeft += 100; // آپدیت هر 100 میلی ثانیه
+            timeLeft += 100;
             const percentage = (timeLeft / updateInterval) * 100;
             timerBar.style.width = percentage + '%';
             
             if (timeLeft >= updateInterval) {
-                timerBar.style.width = '0%';
                 timeLeft = 0;
+                timerBar.style.width = '0%';
+                fetchData(); // دریافت مجدد اطلاعات
             }
         }, 100);
     }
 
     async function fetchData() {
-        startTimer();
-
         try {
             const response = await fetch(dataUrl + '?t=' + new Date().getTime());
-            
-            if (!response.ok) throw new Error('خطا در ارتباط');
-            
+            if (!response.ok) throw new Error('Network error');
             const htmlData = await response.text();
             
-            // ۱. داده‌های جدید را در جدول می‌ریزیم
             tableBody.innerHTML = htmlData;
             
-            // ۲. بلافاصله مرتب‌سازی را انجام می‌دهیم (نکته مهم)
-            sortTableRows();
-            
-            // ۳. اگر کاربر متنی جستجو کرده، فیلتر را دوباره اعمال می‌کنیم
             if(searchInput.value !== "") filterTable();
-
             updateTimeSpan.innerText = new Date().toLocaleTimeString('fa-IR');
 
         } catch (error) {
             console.error(error);
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="info-card" style="color: #e74c3c;">
-                        <i class="fas fa-exclamation-triangle fa-2x"></i><br>
-                        خطا در برقراری ارتباط با سرور
-                    </td>
-                </tr>`;
         }
     }
 
-    // اجرا
-    fetchData();
-    setInterval(fetchData, updateInterval);
+    // شروع تایمر
+    startTimer();
 
 </script>
 </body>
